@@ -17,7 +17,7 @@ export default function DashboardToolbar({ onResetFilters, recordCount, totalCou
         <img
           src="/favicon.png"
           alt="Digital Fertilizer Decision Support Tool logo"
-          className="h-8 w-8 shrink-0 rounded-sm object-contain"
+          className="h-12 w-12 shrink-0 rounded-sm object-contain"
         />
         <div className="flex flex-col leading-tight min-w-0">
           <h1 className="truncate text-[15px] font-semibold tracking-tight text-foreground">

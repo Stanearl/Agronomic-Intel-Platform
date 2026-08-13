@@ -38,7 +38,7 @@ export default function Header() {
           <img
             src="/favicon.png"
             alt="Digital Fertilizer Decision Support Tool logo"
-            className="h-[54px] w-[54px] shrink-0 rounded-full object-contain"
+            className="h-[81px] w-[81px] shrink-0 rounded-full object-contain"
           />
           <span className="hidden sm:block truncate text-xs font-semibold tracking-tight text-slate-900 md:text-sm">
             Digital Fertilizer Decision Support Tool
