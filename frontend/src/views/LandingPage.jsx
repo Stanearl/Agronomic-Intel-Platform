@@ -98,7 +98,8 @@ export default function LandingPage() {
         <section
           id="home"
           className="relative flex min-h-[calc(100vh-4rem)] w-full items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat px-6"
-          style={{ backgroundImage: "url('/hero-sugarcane.jpg')" }}
+          style={{ backgroundImage: "url('/heroimage.jpg')" }}
+
         >
           {/* Gradient overlay for text legibility while keeping the worker visible */}
           <div className="absolute inset-0 bg-gradient-to-b from-slate-900/80 via-slate-900/60 to-slate-900/40" />

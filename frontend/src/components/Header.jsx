@@ -72,7 +72,8 @@ export default function Header() {
           <button
             type="button"
             onClick={() => navigate("/dashboard")}
-            className="flex h-9 min-h-[36px] items-center gap-1.5 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-emerald-800 active:scale-[0.98]"
+            className="flex h-9 min-h-[36px] items-center gap-1.5 rounded-full bg-emerald-700 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-emerald-800 active:scale-[0.98]"
+
           >
             <LayoutDashboard className="h-4 w-4" />
             <span className="hidden sm:inline">Dashboard</span>
