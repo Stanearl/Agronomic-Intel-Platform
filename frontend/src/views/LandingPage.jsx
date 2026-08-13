@@ -9,19 +9,19 @@ const FEATURES = [
     icon: Satellite,
     title: "Geospatial Intelligence",
     description:
-      "High-contrast light-mode mapping renders every georeferenced soil sample instantly and clearly.",
+      "High-contrast mapping renders every georeferenced soil sample instantly and clearly.",
   },
   {
     icon: FlaskConical,
     title: "13 Agronomic Metrics",
     description:
-      "pH, macronutrients, micronutrients and CEC — filterable instantly across the entire pilot dataset.",
+      "pH, macronutrients, micronutrients and CEC filterable instantly across the entire pilot dataset.",
   },
   {
     icon: MapPinned,
     title: "Field-Level Precision",
     description:
-      "Drill into any lab sample with pinpoint spatial accuracy for the Kisumu pilot region.",
+      "Drill into any lab sample with pinpoint spatial accuracy starting with Kisumu pilot region.",
   },
 ];
 
@@ -73,14 +73,14 @@ function StoreButton({ Icon, eyebrow, storeName, href = "#" }) {
   return (
     <a
       href={href}
-      className="group flex min-h-[56px] w-full items-center gap-3 rounded-full border border-white/10 bg-slate-900/80 px-5 py-3 text-white backdrop-blur-md transition-all duration-300 hover:scale-105 hover:border-white/20 hover:bg-slate-900/95 hover:shadow-[0_8px_30px_rgba(0,0,0,0.35)] sm:w-auto"
+      className="group inline-flex min-h-[48px] sm:min-h-[56px] w-auto items-center gap-2 sm:gap-3 rounded-full border border-white/10 bg-slate-900/80 px-3.5 sm:px-5 py-2.5 sm:py-3 text-white backdrop-blur-md transition-all duration-300 hover:scale-105 hover:border-white/20 hover:bg-slate-900/95 hover:shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
     >
-      <Icon className="h-7 w-7 shrink-0 text-white transition-transform duration-300 group-hover:scale-110" />
-      <span className="flex flex-col leading-tight text-left">
-        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-300">
+      <Icon className="h-5 w-5 sm:h-7 sm:w-7 shrink-0 text-white transition-transform duration-300 group-hover:scale-110" />
+      <span className="flex flex-col leading-tight text-left whitespace-nowrap">
+        <span className="text-[8px] sm:text-[10px] font-medium uppercase tracking-wide text-slate-300">
           {eyebrow}
         </span>
-        <span className="text-[15px] font-bold tracking-tight text-white">{storeName}</span>
+        <span className="text-[12px] sm:text-[15px] font-bold tracking-tight text-white">{storeName}</span>
       </span>
     </a>
   );
@@ -122,8 +122,8 @@ export default function LandingPage() {
               className="mx-auto mt-5 max-w-2xl text-sm leading-relaxed text-slate-200 sm:text-base md:text-lg"
             >
               A national-scale decision-support platform fusing geospatial soil intelligence with
-              live agronomic analytics — empowering extension officers, millers, and smallholder
-              sugarcane farmers with precise, field-level fertilizer recommendations across Kenya.
+              live agronomic analytics empowering sugarcane farmers and stakeholders
+              with precise, field-level fertilizer recommendations across Kenya.
             </motion.p>
 
             <motion.div variants={item} className="mt-8">
@@ -140,7 +140,7 @@ export default function LandingPage() {
             {/* Tailgrids-style app download CTAs */}
             <motion.div
               variants={item}
-              className="mt-8 flex w-full flex-col items-center gap-4 sm:w-auto sm:flex-row sm:justify-center md:gap-5"
+              className="mt-8 flex w-full flex-row flex-wrap items-center justify-center gap-3 sm:w-auto md:gap-5"
             >
               <StoreButton Icon={AppleIcon} eyebrow="Download on the" storeName="App Store" />
               <StoreButton Icon={PlayStoreIcon} eyebrow="Get it on" storeName="Google Play" />
