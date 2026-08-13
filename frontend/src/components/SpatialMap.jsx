@@ -226,17 +226,20 @@ export default function SpatialMap({
         </button>
       </div>
 
-      {/* Fullscreen toggle — light, high-density, crisp border */}
-      <div className="absolute right-2.5 top-2.5 z-10">
+      {/* Fullscreen toggle — liquid glass pill, cleanly offset from
+          MapLibre's built-in NavigationControl (top-right zoom +/-)
+          to prevent overlay collision. */}
+      <div className="absolute right-14 top-3 z-10">
         <button
           type="button"
           onClick={() => setIsFullscreen((prev) => !prev)}
           aria-label={isFullscreen ? "Exit fullscreen map" : "Expand map to fullscreen"}
-          className="flex h-11 w-11 items-center justify-center rounded-sm border border-border bg-[#FFFFFF] text-slate-700 shadow-card transition-colors hover:bg-slate-50"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/60 bg-white/80 text-slate-700 shadow-sm backdrop-blur-md transition-all duration-150 hover:bg-white/95 hover:shadow-md active:scale-95"
         >
           {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </button>
       </div>
+
 
       {geoError ? (
         <div className="absolute left-2.5 top-[62px] z-10 max-w-[260px] rounded-sm border border-destructive/30 bg-red-50 px-3 py-2 text-[11px] text-destructive shadow-card sm:top-16">

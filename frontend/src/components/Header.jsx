@@ -1,39 +1,120 @@
-import { RotateCcw, Leaf } from "lucide-react";
-import { Button } from "./ui/button";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Menu, X, LayoutDashboard } from "lucide-react";
+
+const NAV_LINKS = [
+  { label: "Home", href: "#home" },
+  { label: "News", href: "#news" },
+  { label: "Contact Us", href: "#contact" },
+];
 
 /**
  * Header
- * High-contrast light application bar. Carries the official platform
- * name, the Kenya Sugar Board badge, the active dataset indicator,
- * and the global "Reset Filters" action. Flat, dense, zero glow.
+ * Global marketing navigation for the public-facing Landing Page.
+ * A clean, solid, official government-utility style top bar: opaque
+ * white background, a subtle bottom border, and a compact emerald
+ * "Dashboard" CTA that routes into the application. Collapses into a
+ * simple dropdown menu below the lg breakpoint.
  */
-export default function Header({ onResetFilters, recordCount, totalCount }) {
+export default function Header() {
+  const navigate = useNavigate();
+  const [activeLink, setActiveLink] = useState(null);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+  const handleNavClick = (href) => {
+    setActiveLink(href);
+    setIsMobileOpen(false);
+  };
+
   return (
-    <header className="flex h-14 w-full shrink-0 items-center justify-between border-b border-border bg-surface px-4 md:px-6">
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-primary/10 text-primary">
-          <Leaf className="h-4 w-4" />
-        </div>
-        <div className="flex flex-col leading-tight min-w-0">
-          <h1 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
-            Digital Fertilizer Decision Support Tool{" "}
-            <span className="font-normal text-muted-foreground">| KSB</span>
-          </h1>
-        </div>
+    <header className="fixed top-0 left-0 right-0 z-50 w-full border-b border-slate-200 bg-white shadow-sm">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 md:px-6">
+        {/* Brand — left */}
+        <a
+          href="#home"
+          onClick={() => handleNavClick("#home")}
+          className="flex items-center gap-2.5 min-w-0 shrink-0"
+        >
+          <img
+            src="/favicon.png"
+            alt="Digital Fertilizer Decision Support Tool logo"
+            className="h-9 w-9 shrink-0 rounded-full object-contain"
+          />
+          <span className="hidden sm:block truncate text-xs font-semibold tracking-tight text-slate-900 md:text-sm">
+            Digital Fertilizer Decision Support Tool
+          </span>
+        </a>
 
+        {/* Main navigation — center (desktop only) */}
+        <nav className="hidden lg:flex items-center gap-1">
+          {NAV_LINKS.map((link) => {
+            const isActive = activeLink === link.href;
+            return (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={() => handleNavClick(link.href)}
+                className={[
+                  "px-4 py-2 text-sm font-medium rounded-md transition-colors duration-150",
+                  isActive
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                ].join(" ")}
+              >
+                {link.label}
+              </a>
+            );
+          })}
+        </nav>
+
+        {/* Action CTA + mobile hamburger — right */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard")}
+            className="flex h-9 min-h-[36px] items-center gap-1.5 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-emerald-800 active:scale-[0.98]"
+          >
+            <LayoutDashboard className="h-4 w-4" />
+            <span className="hidden sm:inline">Dashboard</span>
+          </button>
+
+          <button
+            type="button"
+            aria-label="Toggle navigation menu"
+            aria-expanded={isMobileOpen}
+            onClick={() => setIsMobileOpen((prev) => !prev)}
+            className="flex h-9 w-9 min-h-[36px] min-w-[36px] items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition-colors duration-150 hover:bg-slate-100 lg:hidden"
+          >
+            {isMobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="hidden items-center gap-2 rounded-sm border border-border bg-slate-50 px-3 py-1.5 text-[11px] text-muted-foreground md:flex">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-          <span className="tabular font-medium text-foreground">{recordCount}</span>
-          <span>/ {totalCount} samples in view</span>
+      {/* Mobile dropdown */}
+      {isMobileOpen ? (
+        <div className="lg:hidden border-t border-slate-200 bg-white px-3 pb-3 pt-2">
+          <nav className="flex flex-col gap-1">
+            {NAV_LINKS.map((link) => {
+              const isActive = activeLink === link.href;
+              return (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => handleNavClick(link.href)}
+                  className={[
+                    "flex min-h-[44px] items-center rounded-md px-4 text-sm font-medium transition-colors duration-150",
+                    isActive
+                      ? "bg-slate-100 text-slate-900"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                  ].join(" ")}
+                >
+                  {link.label}
+                </a>
+              );
+            })}
+          </nav>
         </div>
-        <Button variant="outline" size="sm" onClick={onResetFilters}>
-          <RotateCcw className="h-3.5 w-3.5" />
-          Reset Filters
-        </Button>
-      </div>
+      ) : null}
     </header>
   );
 }

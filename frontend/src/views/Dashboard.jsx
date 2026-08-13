@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Loader2, MapPin, MapPinOff, Sprout } from "lucide-react";
 
 
-import Header from "../components/Header";
+import DashboardToolbar from "../components/DashboardToolbar";
 import KpiSummaryStrip from "../components/KpiSummaryStrip";
 import FilterControls from "../components/FilterControls";
 import AgronomicAnalytics from "../components/AgronomicAnalytics";
@@ -298,7 +298,7 @@ export default function Dashboard() {
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <Header
+      <DashboardToolbar
         onResetFilters={handleResetFilters}
         recordCount={filteredRecords.length}
         totalCount={allRecords.length}
