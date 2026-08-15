@@ -6,7 +6,12 @@ dist/
 build/
 
 # Environment variables
-.env
+# NOTE: This project intentionally COMMITS its production .env files
+# (root .env, backend/.env, frontend/.env) so that a fresh `git clone` on
+# the Hetzner server already has working configuration with no manual
+# setup step. They contain no secrets (no API keys/passwords) — only
+# public domain names and non-sensitive tuning values. Local override
+# files are still ignored below.
 .env.local
 .env.*.local
 
