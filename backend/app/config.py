@@ -1,7 +1,8 @@
 import os
 from functools import lru_cache
-from typing import List
+from typing import List, Union
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -17,7 +18,7 @@ class Settings(BaseSettings):
     )
 
     # CORS
-    ALLOWED_ORIGINS: List[str] = [
+    ALLOWED_ORIGINS: Union[str, List[str]] = [
         origin.strip()
         for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:8086").split(",")
 
@@ -33,7 +34,7 @@ class Settings(BaseSettings):
 
     # Security
     MAX_PAYLOAD_BYTES: int = int(os.getenv("MAX_PAYLOAD_BYTES", str(16 * 1024)))  # 16 KB
-    TRUSTED_HOSTS: List[str] = [
+    TRUSTED_HOSTS: Union[str, List[str]] = [
         host.strip()
         for host in os.getenv("TRUSTED_HOSTS", "*").split(",")
         if host.strip()
@@ -55,6 +56,13 @@ class Settings(BaseSettings):
         "cu",
         "cec",
     ]
+
+    @field_validator("ALLOWED_ORIGINS", "TRUSTED_HOSTS", mode="before")
+    @classmethod
+    def _split_comma_separated(cls, value):
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
     class Config:
         env_file = ".env"

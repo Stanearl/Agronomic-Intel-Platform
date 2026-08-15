@@ -1,41 +1,26 @@
-# ---------- Stage 1: Builder ----------
-FROM python:3.12-slim AS builder
+FROM python:3.11-slim
 
-WORKDIR /build
+WORKDIR /app
 
+# Install system dependencies if needed
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Install python dependencies globally to avoid PYTHONPATH issues
 COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Copy application source
+COPY . .
 
-# ---------- Stage 2: Runtime ----------
-FROM python:3.12-slim AS runtime
-
-RUN addgroup --system app && adduser --system --ingroup app app
-
-WORKDIR /app
-
-COPY --from=builder /root/.local /home/app/.local
-
-COPY app ./app
-COPY data ./data
-
-ENV PATH=/home/app/.local/bin:$PATH \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    ENVIRONMENT=production \
-    CSV_PATH=/app/data/kisumu_pilot_soils.csv
-
-RUN chown -R app:app /app /home/app/.local
-
+# Create non-root user and assign ownership
+RUN useradd -m -u 1000 app && chown -R app:app /app
 USER app
 
 EXPOSE 8087
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8087/health')" || exit 1
+# Execute using python -m to guarantee module resolution
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8087"]
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8087"]
