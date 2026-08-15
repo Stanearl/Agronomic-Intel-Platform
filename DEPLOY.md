@@ -5,7 +5,7 @@ React/Vite frontend) fronted by **Caddy**, which automatically provisions
 and renews free HTTPS certificates (Let's Encrypt) for both domains.
 
 - Frontend: `https://dfdst.ris.africa`
-- Backend API: `https://api.dfdst.ris.africa`
+- Backend API: `https://dfdst-api.ris.africa`
 - Server: `167.235.193.135`
 
 > **Ports 80/443 are already used by another site on this server.** Caddy
@@ -25,7 +25,7 @@ records:
 | Type | Name                  | Value           | Proxy status                |
 |------|-----------------------|-----------------|------------------------------|
 | A    | dfdst.ris.africa      | 167.235.193.135 | Proxied (orange) or DNS only |
-| A    | api.dfdst.ris.africa  | 167.235.193.135 | Proxied (orange) or DNS only |
+| A    | dfdst-api.ris.africa  | 167.235.193.135 | Proxied (orange) or DNS only |
 
 Two supported ways to reach the non-standard Caddy ports, pick one:
 
@@ -33,14 +33,14 @@ Two supported ways to reach the non-standard Caddy ports, pick one:
 Cloudflare's edge always faces visitors on standard 80/443, then forwards
 to your origin. Add two Cloudflare **Origin Rules** (Rules → Origin Rules):
 - Match Hostname is `dfdst.ris.africa` → rewrite Destination Port to `8086`
-- Match Hostname is `api.dfdst.ris.africa` → rewrite Destination Port to `8087`
+- Match Hostname is `dfdst-api.ris.africa` → rewrite Destination Port to `8087`
 
 This keeps clean URLs like `https://dfdst.ris.africa` for visitors while
 Cloudflare talks to your origin on the correct internal port per domain.
 
 **Option B — DNS only (grey cloud), access with explicit port**
 Simpler, no Origin Rule needed, but visitors/you must include the port:
-`https://dfdst.ris.africa:8086` and `https://api.dfdst.ris.africa:8087`.
+`https://dfdst.ris.africa:8086` and `https://dfdst-api.ris.africa:8087`.
 No Cloudflare proxy features (caching, WAF, hiding origin IP) apply here.
 
 Either way, no DNS or firewall change is required for certificate issuance
@@ -103,7 +103,7 @@ In the Cloudflare dashboard for `ris.africa`:
 1. Go to **Rules → Origin Rules → Create rule**.
 2. Rule 1 — Match: `Hostname` equals `dfdst.ris.africa`. Action:
    **Rewrite** → set **Destination Port** to `8086`.
-3. Rule 2 — Match: `Hostname` equals `api.dfdst.ris.africa`. Action:
+3. Rule 2 — Match: `Hostname` equals `dfdst-api.ris.africa`. Action:
    **Rewrite** → set **Destination Port** to `8087`.
 4. Save and deploy both rules.
 
@@ -125,7 +125,7 @@ this works immediately regardless of port 80/443 availability.
 ```bash
 docker compose ps
 curl -Ik https://dfdst.ris.africa:8086
-curl -k https://api.dfdst.ris.africa:8087/health
+curl -k https://dfdst-api.ris.africa:8087/health
 ```
 
 (Drop the port from the URLs if you're accessing through Cloudflare's
@@ -165,7 +165,7 @@ Common issues:
   no trailing slash, no port needed — CORS is about the Origin header the
   browser sends, which reflects the URL bar, not Caddy's internal port).
 - **403 "Invalid host header"**: `TRUSTED_HOSTS` in `backend/.env` must
-  include `api.dfdst.ris.africa`.
+  include `dfdst-api.ris.africa`.
 - **522/523 errors from Cloudflare (Option A)**: an Origin Rule's
   destination port doesn't match 8086/8087, or the host firewall isn't
   allowing that port.

@@ -102,12 +102,18 @@ app = FastAPI(
     redoc_url=None,
 )
 
+origins = [
+    "http://localhost:3000",
+    "http://localhost:8086",
+    "https://dfdst.ris.africa"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=False,
-    allow_methods=settings.ALLOWED_METHODS,
-    allow_headers=settings.ALLOWED_HEADERS,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
     max_age=600,
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.TRUSTED_HOSTS)
