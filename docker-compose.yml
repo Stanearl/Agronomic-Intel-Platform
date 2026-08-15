@@ -41,12 +41,22 @@ services:
       retries: 3
 
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
     container_name: dfdst-caddy
     restart: unless-stopped
+    # Ports 80/443 are already bound by another site on this host. Caddy
+    # publishes directly on this project's existing convention ports
+    # (8086 = frontend, 8087 = backend — matching vite.config.js and the
+    # Dockerfiles). TLS certificates are issued via Cloudflare DNS-01 (see
+    # Caddyfile), so port 80 reachability is never required.
     ports:
-      - "80:80"
-      - "443:443"
+      - "8086:8086"
+      - "8087:8087"
+
+    env_file:
+      - ./caddy.env
     environment:
       FRONTEND_DOMAIN: ${FRONTEND_DOMAIN}
       BACKEND_DOMAIN: ${BACKEND_DOMAIN}
@@ -60,6 +70,7 @@ services:
       - backend
     networks:
       - internal
+
 
 networks:
   internal:

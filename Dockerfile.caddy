@@ -1,0 +1,12 @@
+# Custom Caddy build with the Cloudflare DNS provider plugin.
+# Required for the DNS-01 ACME challenge (see Caddyfile), which lets Caddy
+# obtain valid Let's Encrypt certificates WITHOUT needing port 80 reachable
+# from the internet — necessary here since ports 80/443 on this Hetzner
+# host are already bound by another site's reverse proxy.
+FROM caddy:2-builder AS builder
+
+RUN xcaddy build --with github.com/caddy-dns/cloudflare
+
+FROM caddy:2
+
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy

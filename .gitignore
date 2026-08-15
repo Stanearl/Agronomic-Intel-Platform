@@ -15,6 +15,11 @@ build/
 .env.local
 .env.*.local
 
+# caddy.env holds a real Cloudflare API token (DNS edit scope) — a genuine
+# secret — and must NEVER be committed. Copy caddy.env.example -> caddy.env
+# on the server and fill in the real token there.
+caddy.env
+
 # OS artifacts
 .DS_Store
 Thumbs.db
