@@ -15,5 +15,5 @@
 		dns cloudflare {$CLOUDFLARE_API_TOKEN}
 	}
 	encode gzip
-	reverse_proxy backend:8087
+	reverse_proxy dfdst-backend:8087
 }
