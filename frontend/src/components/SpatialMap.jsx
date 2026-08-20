@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
-import Map, { Marker, Popup, NavigationControl } from "react-map-gl/maplibre";
+import maplibregl from "maplibre-gl";
+import Map, { Marker, Popup, NavigationControl, Source, Layer } from "react-map-gl/maplibre";
+import { Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { Crosshair, MapPin, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { getMetricColor } from "../utils/colorScale";
@@ -9,6 +11,41 @@ import { findNearestSample, isWithinKisumuCoverage } from "../utils/geoUtils";
 
 const MAP_STYLE_URL =
   import.meta.env.VITE_MAP_STYLE_URL || "https://tiles.openfreemap.org/styles/positron";
+
+// Continuous "weather-map-style" soil health interpolation overlay —
+// a pre-computed PMTiles archive (see backend/scripts/
+// generate_soil_grid.py + tippecanoe, served statically with HTTP
+// Range Request support by FastAPI — backend/app/main.py) rather than
+// the 92 discrete sample markers rendered elsewhere in this component.
+// Falls back to the backend's own static /tiles mount when no
+// dedicated override is configured.
+const SOIL_HEALTH_PMTILES_URL =
+  import.meta.env.VITE_SOIL_HEALTH_PMTILES_URL ||
+  `${import.meta.env.VITE_API_BASE_URL || ""}/tiles/soil-health.pmtiles`;
+
+// The vector tile "source-layer" name baked into the archive by the
+// `-l soil_health` tippecanoe flag — must match exactly.
+const SOIL_HEALTH_SOURCE_LAYER = "soil_health";
+
+// Registering MapLibre's "pmtiles://" protocol handler must happen once,
+// at module scope, before any Map instance is constructed — mirrors the
+// canonical pmtiles + MapLibre GL JS integration pattern.
+const pmtilesProtocol = new Protocol();
+maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
+
+// Data-driven fill-color gradient for the interpolated soil_health_score
+// property (0-100), matching the same red -> amber -> green semantics as
+// the discrete marker palette in ../utils/colorScale.js (deficient/poor
+// -> moderate -> optimal/excellent).
+const SOIL_HEALTH_FILL_COLOR = [
+  "interpolate",
+  ["linear"],
+  ["coalesce", ["get", "soil_health_score"], 0],
+  0, "#B91C1C", // poor — deficient/alert red
+  45, "#B45309", // moderate — amber
+  70, "#65A30D", // improving — olive-green transition
+  100, "#15803D", // excellent — soil-health green
+];
 
 /**
  * applyPremiumLightStyling
@@ -106,6 +143,11 @@ export default function SpatialMap({
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // First label/symbol layer id in the active basemap style — the
+  // soil health fill overlay is inserted immediately before it via
+  // `beforeId` so city names/road labels always render cleanly on top
+  // of the continuous "weather-map-style" interpolation surface.
+  const [firstSymbolLayerId, setFirstSymbolLayerId] = useState(undefined);
 
   const runDiagnostic = useCallback(
     (lat, lng) => {
@@ -175,7 +217,15 @@ export default function SpatialMap({
   }, [viewState, onViewStateChange, runDiagnostic]);
 
   const handleMapLoad = useCallback((event) => {
-    applyPremiumLightStyling(event.target);
+    const map = event.target;
+    applyPremiumLightStyling(map);
+
+    // Locate the first symbol (label) layer in the loaded style so the
+    // soil health overlay can be inserted directly beneath it — this
+    // keeps road/place-name labels crisply legible above the fill,
+    // exactly like a professional weather-radar overlay.
+    const symbolLayer = (map.getStyle()?.layers || []).find((layer) => layer.type === "symbol");
+    setFirstSymbolLayerId(symbolLayer?.id);
   }, []);
 
   // Clears the dropped pin whenever the parent issues a reset signal
@@ -258,6 +308,28 @@ export default function SpatialMap({
         cursor={pinMode ? "crosshair" : "grab"}
       >
         <NavigationControl position="top-right" />
+
+        {/* Continuous "weather-map-style" soil health interpolation
+            overlay — a pre-computed PMTiles archive rendered as a
+            translucent, data-driven fill so the estimated soil
+            condition between the 92 discrete sample points is visible
+            at a glance, without hiding the underlying OpenFreeMap
+            roads/terrain. `beforeId` pins this fill directly below the
+            basemap's first label layer so text/road labels stay
+            legible on top. */}
+        <Source id="soil-health" type="vector" url={`pmtiles://${SOIL_HEALTH_PMTILES_URL}`}>
+          <Layer
+            id="soil-health-fill"
+            type="fill"
+            source-layer={SOIL_HEALTH_SOURCE_LAYER}
+            beforeId={firstSymbolLayerId}
+            paint={{
+              "fill-color": SOIL_HEALTH_FILL_COLOR,
+              "fill-opacity": 0.55,
+              "fill-antialias": true,
+            }}
+          />
+        </Source>
 
         {samples.map((sample) => {
           const isSelected = String(sample.lab_id) === String(selectedLabId);

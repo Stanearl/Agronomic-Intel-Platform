@@ -1,0 +1,18 @@
+# Dependencies for backend/scripts/generate_soil_grid.py ONLY.
+#
+# Intentionally kept separate from backend/requirements.txt: these are
+# heavy, compiled geospatial libraries (GDAL/GEOS bindings) needed only
+# for the offline, manually-triggered batch tiling pipeline — they must
+# NEVER be baked into the lean production FastAPI API image.
+#
+# Usage:
+#   python -m venv .tiling-venv
+#   .tiling-venv/Scripts/activate   (Windows)  or  source .tiling-venv/bin/activate (Linux/macOS)
+#   pip install -r backend/scripts/requirements.txt
+#   python backend/scripts/generate_soil_grid.py
+
+geopandas==1.0.1
+shapely==2.0.6
+scipy==1.14.1
+pandas==2.2.2
+numpy==2.1.3

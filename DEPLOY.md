@@ -145,7 +145,67 @@ docker compose up -d
 `caddy.env` is untouched by `git pull` since it's git-ignored — no need to
 recreate it on subsequent deploys.
 
-## 8. Logs & troubleshooting
+## 8. Regenerating the Soil Health PMTiles overlay
+
+The continuous "weather-map-style" soil health interpolation layer
+(rendered under the sample markers in the map view) is a pre-computed
+**batch artifact**, not something the API computes per-request. It only
+needs regeneration when the underlying `kisumu_pilot_soils.csv` dataset
+changes (expected: a few times a month at most).
+
+Pipeline: `kisumu_pilot_soils.csv` → `generate_soil_grid.py` (IDW
+interpolation via geopandas/scipy) → `soil_health_grid.geojson` →
+`tippecanoe` → `backend/data/tiles/soil-health.pmtiles`, which FastAPI
+serves statically (with HTTP Range Request support) at
+`https://dfdst-api.ris.africa/tiles/soil-health.pmtiles`.
+
+On the Hetzner production server:
+
+Because `backend/data` is baked into the image via `COPY . .` in
+`backend/Dockerfile` (not bind-mounted at runtime), the generation step
+runs against the **host** checkout of the repo, not inside the running
+`backend` container — its output then needs a rebuild to reach
+production (step 3 below).
+
+```bash
+cd /opt/dfdst
+
+# 1. Generate the interpolated GeoJSON grid on the host, in a disposable
+#    virtualenv (geopandas/scipy/shapely are intentionally isolated from
+#    backend/requirements.txt — see backend/scripts/requirements.txt —
+#    so they never bloat the production API image):
+python3 -m venv .tiling-venv
+source .tiling-venv/bin/activate
+pip install --no-cache-dir -r backend/scripts/requirements.txt
+python backend/scripts/generate_soil_grid.py
+deactivate
+
+# 2. Convert the GeoJSON into the PMTiles archive with tippecanoe
+#    (Docker — no native install needed on the host):
+mkdir -p backend/data/tiles
+docker run --rm -v "$(pwd)/backend/data:/data" \
+  ghcr.io/felt/tippecanoe:latest \
+  tippecanoe -zg --projection=EPSG:4326 \
+    -o /data/tiles/soil-health.pmtiles \
+    -l soil_health \
+    --drop-densest-as-needed \
+    --extend-zooms-if-still-dropping \
+    -f \
+    /data/soil_health_grid.geojson
+
+# 3. backend/data (including the new tiles/soil-health.pmtiles) is baked
+#    into the image via `COPY . .` in backend/Dockerfile — it is NOT
+#    bind-mounted at runtime — so a rebuild + restart is required for
+#    the running container to pick up the new archive:
+docker compose build backend
+docker compose up -d backend
+
+# 4. Confirm with a Range request:
+curl -I -H "Range: bytes=0-9" https://dfdst-api.ris.africa/tiles/soil-health.pmtiles
+# Expect: HTTP/2 206, with Content-Range and Accept-Ranges: bytes headers.
+```
+
+## 9. Logs & troubleshooting
 
 ```bash
 docker compose logs -f caddy      # TLS/cert issues, DNS-01 challenge status

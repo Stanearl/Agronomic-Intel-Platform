@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List
 
@@ -6,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
@@ -71,6 +73,9 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+STATIC_TILE_PREFIXES = ("/tiles",)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -78,7 +83,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Cache-Control"] = "no-store"
+        if request.url.path.startswith(STATIC_TILE_PREFIXES):
+            # PMTiles archives are pre-computed, infrequently regenerated
+            # batch artifacts (see backend/scripts/generate_soil_grid.py)
+            # — safe, and desirable for mobile performance, to let
+            # browsers/CDNs cache the many small byte-range tile requests
+            # PMTiles issues per pan/zoom instead of forcing a re-fetch.
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        else:
+            response.headers["Cache-Control"] = "no-store"
         return response
 
 
@@ -114,12 +127,45 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # PMTiles' JS client (pmtiles.Protocol) issues HTTP Range requests
+    # and inspects the Content-Range/Content-Length/Accept-Ranges/ETag
+    # response headers to fetch only the relevant byte offsets inside
+    # the archive. Browsers hide non-"safe-listed" response headers
+    # from cross-origin JS unless the server explicitly exposes them
+    # here — without this, PMTiles range requests silently fail on the
+    # dfdst.ris.africa (frontend) -> dfdst-api.ris.africa (backend)
+    # cross-origin deployment topology.
+    expose_headers=["Content-Range", "Content-Length", "Accept-Ranges", "ETag"],
     max_age=600,
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.TRUSTED_HOSTS)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(MaxBodySizeMiddleware)
 app.add_middleware(RateLimitMiddleware)
+
+# ------------------------------------------------------------------------
+# Static tile archive hosting (PMTiles)
+# ------------------------------------------------------------------------
+# Serves pre-computed *.pmtiles archives (e.g. soil-health.pmtiles, built
+# offline by backend/scripts/generate_soil_grid.py + tippecanoe — see
+# that script's docstring/trailer for the exact CLI commands) from
+# settings.TILES_DIR at the /tiles/* URL prefix.
+#
+# Starlette's FileResponse (used internally by StaticFiles) natively
+# implements HTTP Range Requests — parsing the `Range` request header,
+# returning `206 Partial Content` with the correct `Content-Range` /
+# `Content-Length` for the requested byte span, and advertising
+# `Accept-Ranges: bytes` on every response. This is a hard requirement
+# for PMTiles, whose browser client fetches small byte ranges out of the
+# archive on every pan/zoom rather than downloading the whole file.
+#
+# check_dir=False so a fresh clone/deploy that hasn't generated any
+# tiles yet doesn't crash the whole API on startup — requests for a
+# missing archive simply 404 until the batch job has been run.
+if not os.path.isdir(settings.TILES_DIR):
+    os.makedirs(settings.TILES_DIR, exist_ok=True)
+
+app.mount("/tiles", StaticFiles(directory=settings.TILES_DIR, check_dir=False), name="tiles")
 
 
 def _parse_filter_bounds(

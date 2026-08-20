@@ -17,6 +17,17 @@ class Settings(BaseSettings):
         os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "kisumu_pilot_soils.csv"),
     )
 
+    # Directory containing pre-computed static geospatial tile archives
+    # (e.g. soil-health.pmtiles produced by backend/scripts/
+    # generate_soil_grid.py + tippecanoe). Served read-only, statically,
+    # at the /tiles URL prefix — see app/main.py. Defaults to the same
+    # "data" directory as CSV_PATH so a fresh deploy needs no extra
+    # directory setup.
+    TILES_DIR: str = os.getenv(
+        "TILES_DIR",
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "tiles"),
+    )
+
     # CORS
     ALLOWED_ORIGINS: Union[str, List[str]] = [
         origin.strip()

@@ -40,3 +40,14 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Soil health PMTiles pipeline (backend/scripts/generate_soil_grid.py)
+# ---------------------------------------------------------------------
+# soil_health_grid.geojson is a large (~20MB), fully reproducible
+# intermediate artifact — regenerate it any time with:
+#   python backend/scripts/generate_soil_grid.py
+# The final backend/data/tiles/*.pmtiles archive IS committed (it's
+# the actual artifact FastAPI serves to the frontend, and per-commit
+# regeneration via tippecanoe requires a separate toolchain — see
+# DEPLOY.md and generate_soil_grid.py's docstring).
+backend/data/soil_health_grid.geojson
