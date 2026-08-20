@@ -7,7 +7,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { Crosshair, MapPin, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { getMetricColor } from "../utils/colorScale";
 import { formatMetricValue } from "../constants/metrics";
-import { findNearestSample, isWithinKisumuCoverage } from "../utils/geoUtils";
+import { isWithinKisumuCoverage } from "../utils/geoUtils";
 import { fetchSoilScore } from "../api/client";
 
 const MAP_STYLE_URL =
@@ -27,6 +27,15 @@ const SOIL_HEALTH_PMTILES_URL =
 // The vector tile "source-layer" name baked into the archive by the
 // `-l soil_health` tippecanoe flag — must match exactly.
 const SOIL_HEALTH_SOURCE_LAYER = "soil_health";
+
+// Static Kisumu County boundary polygon served as GeoJSON by the
+// backend's /tiles mount, rendered as a distinct dashed line layer
+// above the soil health fill to clearly mark the geographic coverage
+// cutoff — coordinates outside this boundary are rejected by the
+// /api/v1/soil-score endpoint.
+const KISUMU_BOUNDARY_URL =
+  import.meta.env.VITE_KISUMU_BOUNDARY_URL ||
+  `${import.meta.env.VITE_API_BASE_URL || ""}/tiles/kisumu_boundary.geojson`;
 
 // Registering MapLibre's "pmtiles://" protocol handler must happen once,
 // at module scope, before any Map instance is constructed — mirrors the
@@ -173,49 +182,33 @@ export default function SpatialMap({
           outOfBounds: false,
         });
       } catch (error) {
-        if (error?.code === "out_of_bounds") {
-          setDroppedPin({ lat, lng, outOfBounds: true });
-          if (onOutOfBoundsError) {
-            onOutOfBoundsError(error.message);
-          }
-          if (onLocationDiagnostic) {
-            onLocationDiagnostic({
-              coordinates: { lat, lng },
-              nearestSample: null,
-              distanceKm: null,
-              outOfBounds: true,
-            });
-          }
-          return;
+        // ANY error from fetchSoilScore (including out_of_bounds,
+        // network failures, or server errors) should immediately
+        // trigger the out-of-bounds state. NO fallback to local
+        // Haversine calculation is permitted — if the backend
+        // rejects the coordinate, we must not display a soil score.
+        setDroppedPin({ lat, lng, outOfBounds: true });
+        
+        const errorMessage = error?.code === "out_of_bounds"
+          ? error.message
+          : "Unable to retrieve soil data for this location. Please try again or select a different area.";
+        
+        if (onOutOfBoundsError) {
+          onOutOfBoundsError(errorMessage);
         }
-
-        // Network/server failure (not an out-of-bounds rejection) —
-        // gracefully fall back to the local Haversine lookup against
-        // the already-loaded sample set rather than leaving the user
-        // with no diagnostic at all.
-        setDroppedPin({ lat, lng, outOfBounds: !withinCoverageEstimate });
-        if (!onLocationDiagnostic) return;
-
-        if (!withinCoverageEstimate) {
+        
+        if (onLocationDiagnostic) {
           onLocationDiagnostic({
             coordinates: { lat, lng },
             nearestSample: null,
             distanceKm: null,
             outOfBounds: true,
           });
-          return;
         }
-
-        const fallbackResult = findNearestSample(samples, lat, lng);
-        onLocationDiagnostic({
-          coordinates: { lat, lng },
-          nearestSample: fallbackResult ? fallbackResult.sample : null,
-          distanceKm: fallbackResult ? fallbackResult.distanceKm : null,
-          outOfBounds: false,
-        });
+        return;
       }
     },
-    [samples, onLocationDiagnostic, onOutOfBoundsError]
+    [onLocationDiagnostic, onOutOfBoundsError]
   );
 
   const handleMapClick = useCallback(
@@ -379,6 +372,24 @@ export default function SpatialMap({
               // gradient instead of a visible mesh.
               "fill-antialias": false,
               "fill-outline-color": SOIL_HEALTH_FILL_COLOR,
+            }}
+          />
+        </Source>
+
+        {/* Kisumu County boundary line layer — renders the exact
+            geographic cutoff enforced by the backend's out-of-bounds
+            validation, making it visually clear where the supported
+            region ends. Styled as a distinct dashed line sitting above
+            the soil health fill so users immediately see the hard
+            boundary when planning pin drops. */}
+        <Source id="kisumu-boundary" type="geojson" data={KISUMU_BOUNDARY_URL}>
+          <Layer
+            id="kisumu-boundary-line"
+            type="line"
+            paint={{
+              "line-color": "#2c3e50",
+              "line-width": 2,
+              "line-dasharray": [2, 2],
             }}
           />
         </Source>
