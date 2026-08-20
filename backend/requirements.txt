@@ -4,3 +4,9 @@ pandas==2.2.2
 pydantic==2.7.4
 pydantic-settings==2.3.4
 python-multipart==0.0.9
+
+# Lightweight, GEOS-bundled wheel (no GDAL/geopandas needed in the
+# production image) used purely for the Point-in-polygon out-of-bounds
+# check against the pre-computed kisumu_boundary.geojson — see
+# app/boundary.py + the /api/v1/soil-score endpoint in app/main.py.
+shapely==2.0.6

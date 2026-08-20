@@ -13,6 +13,16 @@
 
 geopandas==1.0.1
 shapely==2.0.6
+osmnx==2.1.1
 scipy==1.14.1
 pandas==2.2.2
 numpy==2.1.3
+
+# osmnx (backend/scripts/generate_soil_grid.py::load_kisumu_boundary) is
+# used ONLY the very first time this script runs (or whenever
+# backend/data/kisumu_boundary.geojson has been deleted) to geocode the
+# "Kisumu County, Kenya" administrative boundary via OpenStreetMap
+# Nominatim and cache it locally as a static GeoJSON file. This
+# boundary polygon is what confines/clips the generated IDW grid to
+# the actual Kisumu landmass — cutting out Lake Victoria and
+# neighboring counties instead of the old rectangular bounding box.

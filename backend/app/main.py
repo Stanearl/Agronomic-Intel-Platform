@@ -3,16 +3,18 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.boundary import KisumuBoundary, get_kisumu_boundary
 from app.config import get_settings
 from app.data_manager import DataManager, get_data_manager
 from app.rate_limiter import SlidingWindowRateLimiter
+from app.soil_score import classify_band, compute_soil_health_score, find_nearest_sample
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agronomic_intel_api")
@@ -98,10 +100,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     manager = get_data_manager()
+    boundary = get_kisumu_boundary()
     logger.info(
-        "Startup complete: loaded %d soil records from %s",
+        "Startup complete: loaded %d soil records from %s; Kisumu boundary %s from %s",
         manager.record_count,
         settings.CSV_PATH,
+        "loaded" if boundary.is_loaded else "NOT loaded (out-of-bounds checks disabled)",
+        settings.KISUMU_BOUNDARY_PATH,
     )
     yield
     logger.info("Shutting down Agronomic Intel Platform API")
@@ -222,6 +227,62 @@ async def filter_soils(request: Request) -> List[Dict[str, Any]]:
         return manager.get_all()
 
     return manager.filter(bounds)
+
+
+@app.get("/api/v1/soil-score")
+async def get_soil_score(
+    lat: float = Query(..., ge=-90, le=90, description="Latitude of the dropped pin / GPS fix."),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude of the dropped pin / GPS fix."),
+) -> Dict[str, Any]:
+    """
+    Authoritative, server-side soil health diagnostic for an arbitrary
+    dropped-pin or GPS coordinate.
+
+    Validates the coordinate against the pre-computed Kisumu County
+    boundary polygon (see app/boundary.py) BEFORE running any
+    nearest-neighbor lookup or score computation. Coordinates that
+    fall in Lake Victoria or outside the supported Kisumu region are
+    rejected with HTTP 400 and a structured `{"error": "out_of_bounds",
+    ...}` payload instead of returning a fabricated/meaningless soil
+    score, so the frontend never presents credibility-damaging data
+    for unsupported locations.
+    """
+    boundary: KisumuBoundary = get_kisumu_boundary()
+
+    if not boundary.contains(lat, lon):
+        # Returned as a flat top-level JSON body (not wrapped in the
+        # generic {"detail": ...} envelope used by http_exception_handler
+        # below) so the frontend can pattern-match directly on
+        # `body.error === "out_of_bounds"` — see
+        # frontend/src/api/client.js::fetchSoilScore.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "error": "out_of_bounds",
+                "message": (
+                    "Location is in a water body or outside the Kisumu "
+                    "supported region."
+                ),
+            },
+        )
+
+    manager: DataManager = get_data_manager()
+    records = manager.get_all()
+
+    result = find_nearest_sample(records, lat, lon)
+    nearest_sample = result[0] if result else None
+    distance_km = result[1] if result else None
+
+    health_score = compute_soil_health_score(nearest_sample)
+
+    return {
+        "coordinates": {"lat": lat, "lon": lon},
+        "out_of_bounds": False,
+        "nearest_sample": nearest_sample,
+        "distance_km": distance_km,
+        "soil_health_score": health_score,
+        "band": classify_band(health_score),
+    }
 
 
 @app.exception_handler(HTTPException)

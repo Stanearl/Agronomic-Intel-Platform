@@ -11,6 +11,7 @@ import DataTable from "../components/DataTable";
 import RehabRecommendationModal from "../components/RehabRecommendationModal";
 import MobileNavigation, { MOBILE_VIEWS } from "../components/MobileNavigation";
 import { Button } from "../components/ui/button";
+import Toast from "../components/ui/toast";
 
 import { fetchSoilRecords } from "../api/client";
 import { METRICS, buildDefaultFilters, getMetricConfig } from "../constants/metrics";
@@ -193,6 +194,22 @@ export default function Dashboard() {
   // dropped-pin marker in sync with the view state recentering.
   const [resetPinToken, setResetPinToken] = useState(0);
 
+  // Transient "Location out of range" toast — surfaced whenever the
+  // backend's /api/v1/soil-score endpoint rejects a dropped-pin/GPS
+  // coordinate as falling in Lake Victoria or outside the Kisumu
+  // supported region (see SpatialMap's onOutOfBoundsError callback).
+  const [outOfBoundsToast, setOutOfBoundsToast] = useState(null);
+
+  const handleOutOfBoundsError = useCallback((message) => {
+    setOutOfBoundsToast(message || "Location out of range.");
+  }, []);
+
+  useEffect(() => {
+    if (!outOfBoundsToast) return;
+    const timer = setTimeout(() => setOutOfBoundsToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [outOfBoundsToast]);
+
 
   useEffect(() => {
     let isMounted = true;
@@ -336,6 +353,7 @@ export default function Dashboard() {
               colorMetricConfig={colorMetricConfig}
               onLocationDiagnostic={handleLocationDiagnostic}
               resetPinSignal={resetPinToken}
+              onOutOfBoundsError={handleOutOfBoundsError}
             />
           </div>
           <div style={{ height: 260 }} className="shrink-0 overflow-hidden">
@@ -365,6 +383,7 @@ export default function Dashboard() {
               colorMetricConfig={colorMetricConfig}
               onLocationDiagnostic={handleLocationDiagnostic}
               resetPinSignal={resetPinToken}
+              onOutOfBoundsError={handleOutOfBoundsError}
             />
           </div>
         ) : null}
@@ -415,6 +434,7 @@ export default function Dashboard() {
         onResetToKisumu={handleResetToKisumu}
       />
 
+      <Toast message={outOfBoundsToast} onDismiss={() => setOutOfBoundsToast(null)} />
 
       {loadState.loading ? (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/80">

@@ -28,6 +28,17 @@ class Settings(BaseSettings):
         os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "tiles"),
     )
 
+    # Static "Kisumu County, Kenya" administrative boundary polygon,
+    # produced once (and cached) by backend/scripts/generate_soil_grid.py
+    # via osmnx.geocode_to_gdf(). Loaded on API startup (see
+    # app/boundary.py + app/main.py's lifespan) and used to reject
+    # dropped-pin / GPS coordinates that fall in Lake Victoria or
+    # outside the supported region before a soil score is computed.
+    KISUMU_BOUNDARY_PATH: str = os.getenv(
+        "KISUMU_BOUNDARY_PATH",
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "kisumu_boundary.geojson"),
+    )
+
     # CORS
     ALLOWED_ORIGINS: Union[str, List[str]] = [
         origin.strip()

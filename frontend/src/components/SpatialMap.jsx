@@ -8,6 +8,7 @@ import { Crosshair, MapPin, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { getMetricColor } from "../utils/colorScale";
 import { formatMetricValue } from "../constants/metrics";
 import { findNearestSample, isWithinKisumuCoverage } from "../utils/geoUtils";
+import { fetchSoilScore } from "../api/client";
 
 const MAP_STYLE_URL =
   import.meta.env.VITE_MAP_STYLE_URL || "https://tiles.openfreemap.org/styles/positron";
@@ -137,6 +138,7 @@ export default function SpatialMap({
   mapRef,
   onLocationDiagnostic,
   resetPinSignal,
+  onOutOfBoundsError,
 }) {
   const [pinMode, setPinMode] = useState(false);
   const [droppedPin, setDroppedPin] = useState(null);
@@ -150,31 +152,70 @@ export default function SpatialMap({
   const [firstSymbolLayerId, setFirstSymbolLayerId] = useState(undefined);
 
   const runDiagnostic = useCallback(
-    (lat, lng) => {
-      const withinCoverage = isWithinKisumuCoverage(lat, lng);
-      setDroppedPin({ lat, lng, outOfBounds: !withinCoverage });
+    async (lat, lng) => {
+      // Optimistic client-side pin rendering using the fast, local
+      // bounding-box + radius approximation (geoUtils.js) so the pin
+      // drops instantly — the authoritative call below (validated
+      // against the real Kisumu County boundary polygon, which
+      // excludes Lake Victoria) may still override this a moment
+      // later once the backend responds.
+      const withinCoverageEstimate = isWithinKisumuCoverage(lat, lng);
+      setDroppedPin({ lat, lng, outOfBounds: !withinCoverageEstimate });
 
-      if (!onLocationDiagnostic) return;
-
-      if (!withinCoverage) {
+      try {
+        const result = await fetchSoilScore(lat, lng);
+        setDroppedPin({ lat, lng, outOfBounds: false });
+        if (!onLocationDiagnostic) return;
         onLocationDiagnostic({
           coordinates: { lat, lng },
-          nearestSample: null,
-          distanceKm: null,
-          outOfBounds: true,
+          nearestSample: result.nearest_sample || null,
+          distanceKm: result.distance_km ?? null,
+          outOfBounds: false,
         });
-        return;
-      }
+      } catch (error) {
+        if (error?.code === "out_of_bounds") {
+          setDroppedPin({ lat, lng, outOfBounds: true });
+          if (onOutOfBoundsError) {
+            onOutOfBoundsError(error.message);
+          }
+          if (onLocationDiagnostic) {
+            onLocationDiagnostic({
+              coordinates: { lat, lng },
+              nearestSample: null,
+              distanceKm: null,
+              outOfBounds: true,
+            });
+          }
+          return;
+        }
 
-      const result = findNearestSample(samples, lat, lng);
-      onLocationDiagnostic({
-        coordinates: { lat, lng },
-        nearestSample: result ? result.sample : null,
-        distanceKm: result ? result.distanceKm : null,
-        outOfBounds: false,
-      });
+        // Network/server failure (not an out-of-bounds rejection) —
+        // gracefully fall back to the local Haversine lookup against
+        // the already-loaded sample set rather than leaving the user
+        // with no diagnostic at all.
+        setDroppedPin({ lat, lng, outOfBounds: !withinCoverageEstimate });
+        if (!onLocationDiagnostic) return;
+
+        if (!withinCoverageEstimate) {
+          onLocationDiagnostic({
+            coordinates: { lat, lng },
+            nearestSample: null,
+            distanceKm: null,
+            outOfBounds: true,
+          });
+          return;
+        }
+
+        const fallbackResult = findNearestSample(samples, lat, lng);
+        onLocationDiagnostic({
+          coordinates: { lat, lng },
+          nearestSample: fallbackResult ? fallbackResult.sample : null,
+          distanceKm: fallbackResult ? fallbackResult.distanceKm : null,
+          outOfBounds: false,
+        });
+      }
     },
-    [samples, onLocationDiagnostic]
+    [samples, onLocationDiagnostic, onOutOfBoundsError]
   );
 
   const handleMapClick = useCallback(
@@ -326,7 +367,18 @@ export default function SpatialMap({
             paint={{
               "fill-color": SOIL_HEALTH_FILL_COLOR,
               "fill-opacity": 0.55,
-              "fill-antialias": true,
+              // Disabling antialiasing on this layer is what actually
+              // removes the visible 1px stroke MapLibre otherwise draws
+              // around every grid cell — that seam is exactly what
+              // produced the "cubical grid"/spreadsheet look on a
+              // continuous interpolation surface. Pairing it with a
+              // transparent outline color (matched to the fill via the
+              // same data-driven expression, as a defensive fallback for
+              // renderers where fill-antialias has no effect) makes
+              // adjacent cells blend into one smooth weather-map-style
+              // gradient instead of a visible mesh.
+              "fill-antialias": false,
+              "fill-outline-color": SOIL_HEALTH_FILL_COLOR,
             }}
           />
         </Source>

@@ -24,8 +24,16 @@ cost) in interpolating this surface on every request. Instead we:
      using Inverse Distance Weighting (IDW) over the 92 known points
      (scipy.spatial.cKDTree for the nearest-neighbor search + a
      classic 1/d^p weighting kernel — no external heavy ML deps).
-  5. Assemble the result into a geopandas GeoDataFrame and write it
-     out as a single GeoJSON FeatureCollection.
+  5. Fetch (or reuse a locally cached copy of) the real "Kisumu
+     County, Kenya" administrative boundary polygon via
+     osmnx.geocode_to_gdf() and clip the interpolated grid against it
+     with geopandas — this is what actually cuts Lake Victoria's open
+     water and any neighboring-county spillover out of the rectangular
+     bounding-box mesh built in step 3, and also gives the outer edge
+     of the overlay a smooth, real-world coastline instead of a
+     jagged, stair-stepped grid boundary.
+  6. Assemble the clipped result into a geopandas GeoDataFrame and
+     write it out as a single GeoJSON FeatureCollection.
 
 The GeoJSON is a pure intermediate artifact — see the tippecanoe
 instructions at the bottom of this file (also mirrored in DEPLOY.md)
@@ -40,8 +48,8 @@ Usage
         --out backend/data/soil_health_grid.geojson
 
 Dependencies (NOT part of the lean production API image — see
-backend/scripts/requirements.txt): geopandas, shapely, scipy, pandas,
-numpy.
+backend/scripts/requirements.txt): geopandas, shapely, osmnx, scipy,
+pandas, numpy.
 """
 
 import argparse
@@ -81,6 +89,20 @@ DEFAULT_CSV_PATH = os.path.join(
 DEFAULT_OUT_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "data", "soil_health_grid.geojson"
 )
+
+# Static, one-time-download cache of the "Kisumu County, Kenya"
+# administrative boundary (see load_kisumu_boundary() below). Shared
+# with the live FastAPI backend (app/main.py's startup lifespan loads
+# this exact same file to validate dropped-pin coordinates), so this
+# path MUST stay in sync with app/config.py::KISUMU_BOUNDARY_PATH.
+DEFAULT_BOUNDARY_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data", "kisumu_boundary.geojson"
+)
+
+# Nominatim query string passed to osmnx.geocode_to_gdf() — deliberately
+# specific ("County" + country) to avoid ambiguous matches against the
+# City of Kisumu or other same-named places.
+KISUMU_COUNTY_QUERY = "Kisumu County, Kenya"
 
 # WGS84 — matches the lat/lon already stored in kisumu_pilot_soils.csv
 # and the MapLibre GL JS frontend (no reprojection needed).
@@ -219,6 +241,50 @@ def idw_interpolate(
     return interpolated
 
 
+def load_kisumu_boundary(boundary_path: str) -> "gpd.GeoDataFrame":
+    """
+    Loads the "Kisumu County, Kenya" administrative boundary polygon,
+    fetching it once from OpenStreetMap (via osmnx.geocode_to_gdf())
+    and caching it locally as a static GeoJSON so subsequent runs of
+    this script — and the live FastAPI backend's startup boundary
+    check (app/main.py) — never need network access to Nominatim.
+
+    This boundary is the real Kisumu County landmass polygon, which
+    excludes the open water of Lake Victoria (Winam Gulf) and any
+    neighboring county territory — exactly what's needed to clip the
+    rectangular IDW grid down to a geographically honest coverage
+    area instead of a bounding box that spills into the lake.
+    """
+    if os.path.exists(boundary_path):
+        logger.info("Loading cached Kisumu County boundary from %s", boundary_path)
+        return gpd.read_file(boundary_path)
+
+    try:
+        import osmnx as ox
+    except ImportError as exc:  # pragma: no cover - guidance for operators
+        raise SystemExit(
+            "Missing osmnx (needed to geocode the Kisumu County boundary "
+            f"the first time this script runs). Install it with:\n"
+            "    pip install -r backend/scripts/requirements.txt\n"
+            f"Original import error: {exc}"
+        )
+
+    logger.info(
+        "No cached boundary found at %s — geocoding '%s' via OpenStreetMap "
+        "Nominatim (osmnx.geocode_to_gdf). This only happens once.",
+        boundary_path,
+        KISUMU_COUNTY_QUERY,
+    )
+    boundary_gdf = ox.geocode_to_gdf(KISUMU_COUNTY_QUERY)
+    boundary_gdf = boundary_gdf.to_crs(CRS)
+
+    os.makedirs(os.path.dirname(boundary_path), exist_ok=True)
+    boundary_gdf.to_file(boundary_path, driver="GeoJSON")
+    logger.info("Cached Kisumu County boundary to %s for future runs", boundary_path)
+
+    return boundary_gdf
+
+
 def classify_band(score: float) -> str:
     """Mirrors frontend/src/utils/agronomicRules.js::getHealthScoreBand."""
     if score >= 70:
@@ -235,10 +301,24 @@ def main() -> None:
     parser.add_argument("--csv-path", default=DEFAULT_CSV_PATH, help="Path to the pilot soils CSV.")
     parser.add_argument("--out", default=DEFAULT_OUT_PATH, help="Output GeoJSON file path.")
     parser.add_argument(
+        "--boundary-path",
+        default=DEFAULT_BOUNDARY_PATH,
+        help=(
+            "Path to the cached Kisumu County administrative boundary "
+            "GeoJSON (downloaded once via osmnx.geocode_to_gdf() if this "
+            "file doesn't exist yet)."
+        ),
+    )
+    parser.add_argument(
         "--cell-size-deg",
         type=float,
-        default=0.0025,
-        help="Grid cell edge length in decimal degrees (~0.0025 deg ~= 275m at this latitude).",
+        default=0.0015,
+        help=(
+            "Grid cell edge length in decimal degrees (~0.0015 deg ~= 165m "
+            "at this latitude). Kept small/high-resolution so the clipped "
+            "overlay renders as a smooth gradient rather than a coarse, "
+            "visibly 'cubical' grid once zoomed in."
+        ),
     )
     parser.add_argument(
         "--buffer-deg",
@@ -251,6 +331,7 @@ def main() -> None:
     args = parser.parse_args()
 
     samples = load_samples(args.csv_path)
+    boundary_gdf = load_kisumu_boundary(args.boundary_path)
 
     min_lon = samples["longitude"].min() - args.buffer_deg
     max_lon = samples["longitude"].max() + args.buffer_deg
@@ -265,7 +346,7 @@ def main() -> None:
     centroid_lons, centroid_lats, cell_polygons = build_grid_cells(
         min_lon, min_lat, max_lon, max_lat, args.cell_size_deg
     )
-    logger.info("Generated %d grid cells", len(cell_polygons))
+    logger.info("Generated %d grid cells (pre-clip bounding-box mesh)", len(cell_polygons))
 
     interpolated_scores = idw_interpolate(
         known_lons=samples["longitude"].to_numpy(),
@@ -284,6 +365,27 @@ def main() -> None:
         },
         geometry=cell_polygons,
         crs=CRS,
+    )
+
+    # ------------------------------------------------------------------
+    # Geographic masking: clip the rectangular IDW mesh down to the real
+    # Kisumu County landmass. This is the step that removes Lake
+    # Victoria's open water and any out-of-county spillover from the
+    # bounding-box grid built above, and gives the overlay's outer edge
+    # a smooth, real-world coastline instead of a jagged grid boundary.
+    # geopandas.clip() intersects each cell polygon against the
+    # boundary — cells fully outside are dropped, cells straddling the
+    # boundary are sliced to the exact intersection geometry.
+    # ------------------------------------------------------------------
+    pre_clip_count = len(grid)
+    grid = gpd.clip(grid, boundary_gdf[["geometry"]])
+    grid = grid.reset_index(drop=True)
+    logger.info(
+        "Clipped grid to the Kisumu County boundary: %d -> %d cells "
+        "(%d cells removed — Lake Victoria / out-of-bounds spillover)",
+        pre_clip_count,
+        len(grid),
+        pre_clip_count - len(grid),
     )
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
