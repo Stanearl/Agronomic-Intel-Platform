@@ -1,4 +1,19 @@
-fastapi==0.111.0
+fastapi==0.115.6
+# Pinned explicitly (not just left to fastapi's transitive resolution) so
+# the exact HTTP Range Request behavior below is reproducible across
+# environments. fastapi==0.111.0 (previous pin) required
+# starlette<0.38.0, and Starlette's FileResponse/StaticFiles did NOT
+# implement HTTP Range Requests until 0.40.0 (added _parse_range_header /
+# 206 Partial Content / Content-Range support). Without it, the /tiles
+# StaticFiles mount (see app/main.py) always returned the FULL file with
+# `200 OK` even when a `Range` header was sent, which the PMTiles JS
+# client (frontend/src/components/SpatialMap.jsx) rejects with:
+#   "Server returned no content-length header or content-length
+#    exceeding request. Check that your storage backend supports HTTP
+#    Byte Serving."
+# fastapi==0.115.6 requires starlette>=0.40.0,<0.42.0, which includes
+# byte-range support.
+starlette==0.41.3
 uvicorn[standard]==0.30.1
 pandas==2.2.2
 pydantic==2.7.4
