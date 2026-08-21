@@ -52,9 +52,7 @@ venv/
 # DEPLOY.md and generate_soil_grid.py's docstring).
 backend/data/soil_health_grid.geojson
 
-# backend/data/kisumu_boundary.geojson IS committed (it's a small,
-# static artifact the live API loads on startup for out-of-bounds
-# validation — see app/boundary.py). osmnx's own on-disk HTTP request
-# cache (created transparently the first time generate_soil_grid.py
-# geocodes the boundary) is NOT something we want to commit.
+# backend/data/true_boundary.geojson IS committed (it's a small,
+# static, pre-defined artifact the live API loads on startup for
+# out-of-bounds validation — see app/boundary.py).
 backend/cache/

@@ -24,14 +24,12 @@ cost) in interpolating this surface on every request. Instead we:
      using Inverse Distance Weighting (IDW) over the 92 known points
      (scipy.spatial.cKDTree for the nearest-neighbor search + a
      classic 1/d^p weighting kernel — no external heavy ML deps).
-  5. Fetch (or reuse a locally cached copy of) the real "Kisumu
-     County, Kenya" administrative boundary polygon via
-     osmnx.geocode_to_gdf() and clip the interpolated grid against it
-     with geopandas — this is what actually cuts Lake Victoria's open
-     water and any neighboring-county spillover out of the rectangular
-     bounding-box mesh built in step 3, and also gives the outer edge
-     of the overlay a smooth, real-world coastline instead of a
-     jagged, stair-stepped grid boundary.
+  5. Load the static, pre-defined `backend/data/true_boundary.geojson`
+     boundary polygon and clip the interpolated grid against it — this
+     is the single authoritative geographic extent shared by the API's
+     out-of-bounds validation (app/boundary.py) and the frontend's
+     boundary line layer (SpatialMap.jsx). No dynamic OSM queries or
+     sample-point buffering are involved.
   6. Assemble the clipped result into a geopandas GeoDataFrame and
      write it out as a single GeoJSON FeatureCollection.
 
@@ -48,8 +46,8 @@ Usage
         --out backend/data/soil_health_grid.geojson
 
 Dependencies (NOT part of the lean production API image — see
-backend/scripts/requirements.txt): geopandas, shapely, osmnx, scipy,
-pandas, numpy.
+backend/scripts/requirements.txt): geopandas, shapely, scipy, pandas,
+numpy.
 """
 
 import argparse
@@ -90,19 +88,15 @@ DEFAULT_OUT_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "data", "soil_health_grid.geojson"
 )
 
-# Static, one-time-download cache of the "Kisumu County, Kenya"
-# administrative boundary (see load_kisumu_boundary() below). Shared
-# with the live FastAPI backend (app/main.py's startup lifespan loads
-# this exact same file to validate dropped-pin coordinates), so this
-# path MUST stay in sync with app/config.py::KISUMU_BOUNDARY_PATH.
+# Static, pre-defined boundary GeoJSON — the single authoritative
+# geographic extent for this deployment. Loaded as-is (no OSM queries,
+# no sample-point buffering) to clip the generated IDW grid, and
+# consumed identically by the live API (backend/app/boundary.py) to
+# validate dropped-pin coordinates. Path MUST stay in sync with
+# app/config.py::COVERAGE_BOUNDARY_PATH.
 DEFAULT_BOUNDARY_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "data", "kisumu_boundary.geojson"
+    os.path.dirname(os.path.dirname(__file__)), "data", "true_boundary.geojson"
 )
-
-# Nominatim query string passed to osmnx.geocode_to_gdf() — deliberately
-# specific ("County" + country) to avoid ambiguous matches against the
-# City of Kisumu or other same-named places.
-KISUMU_COUNTY_QUERY = "Kisumu County, Kenya"
 
 # WGS84 — matches the lat/lon already stored in kisumu_pilot_soils.csv
 # and the MapLibre GL JS frontend (no reprojection needed).
@@ -241,50 +235,6 @@ def idw_interpolate(
     return interpolated
 
 
-def load_kisumu_boundary(boundary_path: str) -> "gpd.GeoDataFrame":
-    """
-    Loads the "Kisumu County, Kenya" administrative boundary polygon,
-    fetching it once from OpenStreetMap (via osmnx.geocode_to_gdf())
-    and caching it locally as a static GeoJSON so subsequent runs of
-    this script — and the live FastAPI backend's startup boundary
-    check (app/main.py) — never need network access to Nominatim.
-
-    This boundary is the real Kisumu County landmass polygon, which
-    excludes the open water of Lake Victoria (Winam Gulf) and any
-    neighboring county territory — exactly what's needed to clip the
-    rectangular IDW grid down to a geographically honest coverage
-    area instead of a bounding box that spills into the lake.
-    """
-    if os.path.exists(boundary_path):
-        logger.info("Loading cached Kisumu County boundary from %s", boundary_path)
-        return gpd.read_file(boundary_path)
-
-    try:
-        import osmnx as ox
-    except ImportError as exc:  # pragma: no cover - guidance for operators
-        raise SystemExit(
-            "Missing osmnx (needed to geocode the Kisumu County boundary "
-            f"the first time this script runs). Install it with:\n"
-            "    pip install -r backend/scripts/requirements.txt\n"
-            f"Original import error: {exc}"
-        )
-
-    logger.info(
-        "No cached boundary found at %s — geocoding '%s' via OpenStreetMap "
-        "Nominatim (osmnx.geocode_to_gdf). This only happens once.",
-        boundary_path,
-        KISUMU_COUNTY_QUERY,
-    )
-    boundary_gdf = ox.geocode_to_gdf(KISUMU_COUNTY_QUERY)
-    boundary_gdf = boundary_gdf.to_crs(CRS)
-
-    os.makedirs(os.path.dirname(boundary_path), exist_ok=True)
-    boundary_gdf.to_file(boundary_path, driver="GeoJSON")
-    logger.info("Cached Kisumu County boundary to %s for future runs", boundary_path)
-
-    return boundary_gdf
-
-
 def classify_band(score: float) -> str:
     """Mirrors frontend/src/utils/agronomicRules.js::getHealthScoreBand."""
     if score >= 70:
@@ -303,11 +253,7 @@ def main() -> None:
     parser.add_argument(
         "--boundary-path",
         default=DEFAULT_BOUNDARY_PATH,
-        help=(
-            "Path to the cached Kisumu County administrative boundary "
-            "GeoJSON (downloaded once via osmnx.geocode_to_gdf() if this "
-            "file doesn't exist yet)."
-        ),
+        help="Path to the static, pre-defined boundary GeoJSON used to clip the grid.",
     )
     parser.add_argument(
         "--cell-size-deg",
@@ -331,7 +277,19 @@ def main() -> None:
     args = parser.parse_args()
 
     samples = load_samples(args.csv_path)
-    boundary_gdf = load_kisumu_boundary(args.boundary_path)
+
+    # Load the static, pre-defined boundary GeoJSON — no dynamic OSM
+    # queries or sample-point buffering. This is the single
+    # authoritative geographic extent for the IDW grid clip, the API's
+    # out-of-bounds validation, and the frontend boundary line.
+    boundary_gdf = gpd.read_file("backend/data/true_boundary.geojson")
+
+    tiles_boundary_path = os.path.join(
+        os.path.dirname(args.boundary_path), "tiles", "true_boundary.geojson"
+    )
+    os.makedirs(os.path.dirname(tiles_boundary_path), exist_ok=True)
+    boundary_gdf.to_file(tiles_boundary_path, driver="GeoJSON")
+    logger.info("Copied static boundary to %s", tiles_boundary_path)
 
     min_lon = samples["longitude"].min() - args.buffer_deg
     max_lon = samples["longitude"].max() + args.buffer_deg
@@ -368,21 +326,20 @@ def main() -> None:
     )
 
     # ------------------------------------------------------------------
-    # Geographic masking: clip the rectangular IDW mesh down to the real
-    # Kisumu County landmass. This is the step that removes Lake
-    # Victoria's open water and any out-of-county spillover from the
-    # bounding-box grid built above, and gives the overlay's outer edge
-    # a smooth, real-world coastline instead of a jagged grid boundary.
-    # geopandas.clip() intersects each cell polygon against the
-    # boundary — cells fully outside are dropped, cells straddling the
-    # boundary are sliced to the exact intersection geometry.
+    # Geographic masking: clip the rectangular IDW mesh down to the
+    # static, pre-defined true_boundary.geojson polygon. This gives the
+    # overlay's outer edge the exact real-world boundary shape instead
+    # of a jagged, stair-stepped grid boundary. geopandas.clip()
+    # intersects each cell polygon against the boundary — cells fully
+    # outside are dropped, cells straddling the boundary are sliced to
+    # the exact intersection geometry.
     # ------------------------------------------------------------------
     pre_clip_count = len(grid)
     grid = gpd.clip(grid, boundary_gdf[["geometry"]])
     grid = grid.reset_index(drop=True)
     logger.info(
-        "Clipped grid to the Kisumu County boundary: %d -> %d cells "
-        "(%d cells removed — Lake Victoria / out-of-bounds spillover)",
+        "Clipped grid to the static true_boundary polygon: %d -> %d cells "
+        "(%d cells removed — outside the boundary)",
         pre_clip_count,
         len(grid),
         pre_clip_count - len(grid),

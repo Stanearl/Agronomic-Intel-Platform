@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.boundary import KisumuBoundary, get_kisumu_boundary
+from app.boundary import CoverageBoundary, get_coverage_boundary
 from app.config import get_settings
 from app.data_manager import DataManager, get_data_manager
 from app.rate_limiter import SlidingWindowRateLimiter
@@ -100,13 +100,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     manager = get_data_manager()
-    boundary = get_kisumu_boundary()
+    boundary = get_coverage_boundary()
     logger.info(
-        "Startup complete: loaded %d soil records from %s; Kisumu boundary %s from %s",
+        "Startup complete: loaded %d soil records from %s; coverage boundary %s from %s",
         manager.record_count,
         settings.CSV_PATH,
         "loaded" if boundary.is_loaded else "NOT loaded (out-of-bounds checks disabled)",
-        settings.KISUMU_BOUNDARY_PATH,
+        settings.COVERAGE_BOUNDARY_PATH,
     )
     yield
     logger.info("Shutting down Agronomic Intel Platform API")
@@ -238,16 +238,15 @@ async def get_soil_score(
     Authoritative, server-side soil health diagnostic for an arbitrary
     dropped-pin or GPS coordinate.
 
-    Validates the coordinate against the pre-computed Kisumu County
-    boundary polygon (see app/boundary.py) BEFORE running any
-    nearest-neighbor lookup or score computation. Coordinates that
-    fall in Lake Victoria or outside the supported Kisumu region are
-    rejected with HTTP 400 and a structured `{"error": "out_of_bounds",
-    ...}` payload instead of returning a fabricated/meaningless soil
-    score, so the frontend never presents credibility-damaging data
-    for unsupported locations.
+    Validates the coordinate against the static, pre-defined boundary
+    polygon (backend/data/true_boundary.geojson — see app/boundary.py)
+    BEFORE running any nearest-neighbor lookup or score computation.
+    Coordinates outside this specific shape are rejected with HTTP 400
+    and a structured `{"error": "out_of_bounds", ...}` payload instead
+    of returning a fabricated/meaningless soil score, so the frontend
+    never presents credibility-damaging data for unsupported locations.
     """
-    boundary: KisumuBoundary = get_kisumu_boundary()
+    boundary: CoverageBoundary = get_coverage_boundary()
 
     if not boundary.contains(lat, lon):
         # Returned as a flat top-level JSON body (not wrapped in the
@@ -260,8 +259,7 @@ async def get_soil_score(
             content={
                 "error": "out_of_bounds",
                 "message": (
-                    "Location is in a water body or outside the Kisumu "
-                    "supported region."
+                    "Location is outside the supported coverage boundary."
                 ),
             },
         )

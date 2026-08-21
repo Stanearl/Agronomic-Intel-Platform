@@ -28,14 +28,14 @@ const SOIL_HEALTH_PMTILES_URL =
 // `-l soil_health` tippecanoe flag — must match exactly.
 const SOIL_HEALTH_SOURCE_LAYER = "soil_health";
 
-// Static Kisumu County boundary polygon served as GeoJSON by the
-// backend's /tiles mount, rendered as a distinct dashed line layer
-// above the soil health fill to clearly mark the geographic coverage
-// cutoff — coordinates outside this boundary are rejected by the
-// /api/v1/soil-score endpoint.
-const KISUMU_BOUNDARY_URL =
-  import.meta.env.VITE_KISUMU_BOUNDARY_URL ||
-  `${import.meta.env.VITE_API_BASE_URL || ""}/tiles/kisumu_boundary.geojson`;
+// Static, pre-defined boundary (backend/data/true_boundary.geojson)
+// served as GeoJSON by the backend's /tiles mount, rendered as a
+// distinct dashed line layer above the soil health fill to clearly
+// mark the geographic coverage cutoff — coordinates outside this exact
+// shape are rejected by the /api/v1/soil-score endpoint.
+const COVERAGE_BOUNDARY_URL =
+  import.meta.env.VITE_COVERAGE_BOUNDARY_URL ||
+  `${import.meta.env.VITE_API_BASE_URL || ""}/tiles/true_boundary.geojson`;
 
 // Registering MapLibre's "pmtiles://" protocol handler must happen once,
 // at module scope, before any Map instance is constructed — mirrors the
@@ -376,20 +376,21 @@ export default function SpatialMap({
           />
         </Source>
 
-        {/* Kisumu County boundary line layer — renders the exact
+        {/* Data-driven coverage boundary line layer — renders the exact
             geographic cutoff enforced by the backend's out-of-bounds
             validation, making it visually clear where the supported
-            region ends. Styled as a distinct dashed line sitting above
+            data zone ends. Styled as a distinct dashed line sitting above
             the soil health fill so users immediately see the hard
-            boundary when planning pin drops. */}
-        <Source id="kisumu-boundary" type="geojson" data={KISUMU_BOUNDARY_URL}>
+            boundary when planning pin drops. Covers all agricultural
+            samples while cleanly excluding Lake Victoria. */}
+        <Source id="coverage-boundary" type="geojson" data={COVERAGE_BOUNDARY_URL}>
           <Layer
-            id="kisumu-boundary-line"
+            id="coverage-boundary-line"
             type="line"
             paint={{
-              "line-color": "#2c3e50",
+              "line-color": "#1b4332",
               "line-width": 2,
-              "line-dasharray": [2, 2],
+              "line-dasharray": [3, 2],
             }}
           />
         </Source>

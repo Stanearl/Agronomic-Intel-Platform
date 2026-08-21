@@ -13,18 +13,22 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-class KisumuBoundary:
+class CoverageBoundary:
     """
-    Loads the static "Kisumu County, Kenya" administrative boundary
-    GeoJSON (pre-computed once by backend/scripts/generate_soil_grid.py
-    via osmnx.geocode_to_gdf() — see that script's load_kisumu_boundary())
-    into a single Shapely polygon/multipolygon, entirely with the
-    lightweight `shapely` + stdlib `json` (no geopandas/GDAL dependency
-    in the production API image).
+    Loads the static, pre-defined boundary GeoJSON
+    (backend/data/true_boundary.geojson) into a single Shapely
+    polygon/multipolygon, entirely with the lightweight `shapely` + stdlib
+    `json` (no geopandas/GDAL dependency in the production API image).
 
-    Used to reject dropped-pin / GPS coordinates that fall in Lake
-    Victoria or outside the supported Kisumu region before a soil
-    health score is computed — see app/main.py's
+    This is a hardcoded, authoritative shape — no dynamic OSM queries or
+    sample-point buffering are involved — and the exact same file is used
+    to clip the pre-computed PMTiles grid (backend/scripts/
+    generate_soil_grid.py) and rendered as the frontend's boundary line
+    (frontend/src/components/SpatialMap.jsx), so all three share the
+    identical spatial envelope.
+
+    Used to reject dropped-pin / GPS coordinates that fall outside this
+    boundary before a soil health score is computed — see app/main.py's
     `/api/v1/soil-score` endpoint.
     """
 
@@ -39,7 +43,7 @@ class KisumuBoundary:
                 geojson = json.load(fh)
         except FileNotFoundError:
             logger.warning(
-                "Kisumu boundary file not found at %s — out-of-bounds "
+                "Coverage boundary file not found at %s — out-of-bounds "
                 "validation will be SKIPPED (all coordinates accepted) "
                 "until backend/scripts/generate_soil_grid.py has been run "
                 "at least once to produce it.",
@@ -47,12 +51,12 @@ class KisumuBoundary:
             )
             return None
         except (json.JSONDecodeError, OSError) as exc:
-            logger.error("Failed to read Kisumu boundary file at %s: %s", boundary_path, exc)
+            logger.error("Failed to read coverage boundary file at %s: %s", boundary_path, exc)
             return None
 
         features = geojson.get("features") if isinstance(geojson, dict) else None
         if not features:
-            logger.error("Kisumu boundary file at %s has no features", boundary_path)
+            logger.error("Coverage boundary file at %s has no features", boundary_path)
             return None
 
         geometries = [
@@ -61,14 +65,14 @@ class KisumuBoundary:
             if feature.get("geometry")
         ]
         if not geometries:
-            logger.error("Kisumu boundary file at %s has no usable geometry", boundary_path)
+            logger.error("Coverage boundary file at %s has no usable geometry", boundary_path)
             return None
 
         polygon = geometries[0]
         for geometry in geometries[1:]:
             polygon = polygon.union(geometry)
 
-        logger.info("Loaded Kisumu County boundary polygon from %s", boundary_path)
+        logger.info("Loaded data-driven coverage boundary polygon from %s", boundary_path)
         return polygon
 
     def reload(self) -> None:
@@ -82,8 +86,8 @@ class KisumuBoundary:
     def contains(self, lat: float, lon: float) -> bool:
         """
         Returns True if the given lat/lon coordinate falls inside the
-        Kisumu County landmass boundary (i.e. NOT in Lake Victoria and
-        NOT outside the supported region).
+        data-driven coverage boundary (i.e. within the buffered sample
+        envelope and NOT in Lake Victoria water bodies).
 
         Fails open (returns True) if the boundary file could not be
         loaded, so a missing/corrupt boundary artifact never takes the
@@ -97,11 +101,11 @@ class KisumuBoundary:
         return self._polygon.contains(point) or self._polygon.touches(point)
 
 
-_kisumu_boundary_instance: Optional[KisumuBoundary] = None
+_coverage_boundary_instance: Optional[CoverageBoundary] = None
 
 
-def get_kisumu_boundary() -> KisumuBoundary:
-    global _kisumu_boundary_instance
-    if _kisumu_boundary_instance is None:
-        _kisumu_boundary_instance = KisumuBoundary(settings.KISUMU_BOUNDARY_PATH)
-    return _kisumu_boundary_instance
+def get_coverage_boundary() -> CoverageBoundary:
+    global _coverage_boundary_instance
+    if _coverage_boundary_instance is None:
+        _coverage_boundary_instance = CoverageBoundary(settings.COVERAGE_BOUNDARY_PATH)
+    return _coverage_boundary_instance
