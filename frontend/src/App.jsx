@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import LandingPage from "./views/LandingPage";
 import Dashboard from "./views/Dashboard";
+import News from "./views/News";
+import Contact from "./views/Contact";
 import PageTransition from "./components/PageTransition";
 
 function AnimatedRoutes() {
@@ -23,6 +25,22 @@ function AnimatedRoutes() {
           element={
             <PageTransition>
               <Dashboard />
+            </PageTransition>
+          }
+        />
+        <Route
+          path="/news"
+          element={
+            <PageTransition>
+              <News />
+            </PageTransition>
+          }
+        />
+        <Route
+          path="/contact"
+          element={
+            <PageTransition>
+              <Contact />
             </PageTransition>
           }
         />
